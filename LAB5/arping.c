@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <errno.h>
+#include <limits.h>
 
 #include <pcap.h>
 #include <libnet.h>
@@ -20,7 +21,7 @@ char* errbuf;
 pcap_t* handle;
 libnet_t *ln;
 u_int32_t dstip;
-char lastreplymac[ETH_ALEN];
+u_int8_t lastreplymac[ETH_ALEN];
 
 unsigned int numsent = 0;       
 unsigned int numrecvd = 0;
@@ -38,7 +39,14 @@ void cleanup(void);
 
 str2int_errno str2int(int *out, char *s, int base);
 
-void send_arp_request_unicast(char is_ethernet, libnet_t *libnet, const uint8_t * sender_hw_addr, const uint8_t * sender_proto_addr, const uint8_t * target_hw_addr, uint8_t * target_proto_addr, u_int8_t ethernet_dst_hw_addr);
+char* format_mac(const unsigned char* mac, char* buf, size_t bufsize) {
+    snprintf(buf, bufsize, "%.2x:%.2x:%.2x:%.2x:%.2x:%.2x",
+            mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+    return buf;
+}
+   
+
+void send_arp_request_unicast(char is_ethernet, libnet_t *libnet, const uint8_t * sender_hw_addr, const uint8_t * sender_proto_addr, const uint8_t * target_hw_addr, uint8_t * target_proto_addr, u_int8_t* ethernet_dst_hw_addr);
  
 void send_arp_request_broadcast(char is_ethernet, libnet_t *libnet, const uint8_t * sender_hw_addr, const uint8_t * sender_proto_addr, const uint8_t * target_hw_addr, uint8_t * target_proto_addr);
 
@@ -60,8 +68,8 @@ int main(int argc, char** argv) {
         perror("\n");
     }
     if (argc >= 3) { // INTERFACE IP
-        *interface = argv[1];
-        *target_ip = argv[2];
+        strcpy(interface, argv[1]);
+        strcpy(target_ip, argv[2]);
     }
     if (argc >= 4) { // INTERFACE IP ETHER/WIFI (0 == ethernet, > 0 == wifi)
         int ether_check = 0;
@@ -115,11 +123,10 @@ int main(int argc, char** argv) {
     while(max_count != 0){
 
         if (first_iter){
-            // stuff to do
-            arp_request_broadcast(ethernet, ln, src_hw_addr->ether_addr_octet, (u_int8_t*) &src_ip_addr, zero_hw_addr, (u_int8_t*) &target_ip_addr);
+            send_arp_request_broadcast(ethernet, ln, src_hw_addr->ether_addr_octet, (u_int8_t*) &src_ip_addr, zero_hw_addr, (u_int8_t*) &target_ip_addr);
             first_iter = 0;
         } else {
-            arp_request_unicast(ethernet, ln, src_hw_addr->ether_addr_octet, (u_int8_t*) &src_ip_addr, zero_hw_addr, (u_int8_t*) &target_ip_addr, lastreplymac);
+            send_arp_request_unicast(ethernet, ln, src_hw_addr->ether_addr_octet, (u_int8_t*) &src_ip_addr, zero_hw_addr, (u_int8_t*) &target_ip_addr, (u_int8_t*) &lastreplymac);
         }
         usleep(10);
         recv_handler();
@@ -219,7 +226,7 @@ str2int_errno str2int(int *out, char *s, int base) {
     return STR2INT_SUCCESS;
 }
 
-void send_arp_request_unicast(char is_ethernet, libnet_t *libnet, const uint8_t * sender_hw_addr, const uint8_t * sender_proto_addr, const uint8_t * target_hw_addr, uint8_t * target_proto_addr, u_int8_t ethernet_dst_hw_addr) {
+void send_arp_request_unicast(char is_ethernet, libnet_t *libnet, const uint8_t * sender_hw_addr, const uint8_t * sender_proto_addr, const uint8_t * target_hw_addr, uint8_t * target_proto_addr, u_int8_t* ethernet_dst_hw_addr) {
 
     static libnet_ptag_t arp=0, eth=0;
 
@@ -231,12 +238,12 @@ void send_arp_request_unicast(char is_ethernet, libnet_t *libnet, const uint8_t 
         (u_int8_t*) &target_proto_addr,    /* target protocol addr */
         libnet                             /* libnet context       */
         ))) {                   
-        libnet_geterror(libnet));          
+        libnet_geterror(libnet);          
     };                               
 
     if (is_ethernet) {
         eth = libnet_build_ethernet(ethernet_dst_hw_addr,
-                                srcmac,
+                                sender_hw_addr,
                                 ETHERTYPE_ARP,
                                 NULL, // payload
                                 0, // payload size
@@ -244,9 +251,10 @@ void send_arp_request_unicast(char is_ethernet, libnet_t *libnet, const uint8_t 
                                 eth);
         
     } else {
-        int16_t vlan_prio = 1 // range of 0 - 7;
+        int16_t vlan_prio = 1; // range of 0 - 7;
+        int16_t vlan_tag = 1; // range of 0 - 4000;
         eth = libnet_build_802_1q(ethernet_dst_hw_addr,
-                              srcmac,
+                              sender_hw_addr,
                               ETHERTYPE_VLAN,
                               vlan_prio,
                               0, // cfi
@@ -258,8 +266,7 @@ void send_arp_request_unicast(char is_ethernet, libnet_t *libnet, const uint8_t 
                               eth);
     }
     if (-1 == eth) {
-        fprintf(stderr, "arping: %s: %s\n", (vlan_tag >= 0) ? "libnet_build_802_1q()" : "libnet_build_ethernet()",
-        libnet_geterror(libnet));
+        libnet_geterror(libnet);
     }
     if (-1 == libnet_write(libnet)) {
         fprintf(stderr, "arping: libnet_write(): %s\n",
