@@ -117,10 +117,11 @@ int main(int argc, char** argv) {
     while(max_count != 0){
         if (ethernet == 1){}
         if (first_iter){
-            send_arp_request_unicast(ethernet, ln, (const u_int8_t *) &(src_hw_addr->ether_addr_octet), (const u_int8_t*) &src_ip_addr, (const u_int8_t *) &zero_hw_addr, (u_int8_t*) &target_ip_addr, bcast_hw_addr);
+            send_arp_request_unicast(ethernet, ln, (const u_int8_t *) &(src_hw_addr->ether_addr_octet), (const u_int8_t*) &src_ip_addr, (const u_int8_t *) &zero_hw_addr, (u_int8_t*) &target_ip_addr, (u_int8_t*) &bcast_hw_addr);
             first_iter = 0;
         } else {
-            send_arp_request_unicast(ethernet, ln, (const u_int8_t *) &(src_hw_addr->ether_addr_octet), (const u_int8_t*) &src_ip_addr, (const u_int8_t *) &zero_hw_addr, (u_int8_t*) &target_ip_addr, lastreplymac);
+            send_arp_request_unicast(ethernet, ln, (const u_int8_t *) &(src_hw_addr->ether_addr_octet), (const u_int8_t*) &src_ip_addr, (const u_int8_t *) &zero_hw_addr, (u_int8_t*) &target_ip_addr, (u_int8_t*) &bcast_hw_addr);
+            // send_arp_request_unicast(ethernet, ln, (const u_int8_t *) &(src_hw_addr->ether_addr_octet), (const u_int8_t*) &src_ip_addr, (const u_int8_t *) &zero_hw_addr, (u_int8_t*) &target_ip_addr, lastreplymac);
         }
         recv_handler();
         
@@ -313,8 +314,8 @@ void recv_arp_reply(const char *user, struct pcap_pkthdr *h, const char * const 
         FD_SET(fd, &fds);
 
         struct timeval tv;
-        tv.tv_sec = 1;
-        // tv.tv_usec = 5000000;
+        tv.tv_sec = 2;
+        tv.tv_usec = 500000;
 
 
         r = select(fd + 1, &fds, NULL, NULL, &tv);
