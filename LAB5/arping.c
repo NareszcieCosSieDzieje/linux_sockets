@@ -46,7 +46,7 @@ char* format_mac(const unsigned char* mac, char* buf, size_t bufsize) {
 }
    
 
-void send_arp_request_unicast(char is_ethernet, libnet_t *libnet, const uint8_t * sender_hw_addr, const uint8_t * sender_proto_addr, const uint8_t * target_hw_addr, uint8_t * target_proto_addr, u_int8_t* ethernet_dst_hw_addr);
+void send_arp_request_unicast(char is_ethernet, libnet_t *libnet, const uint8_t * sender_hw_addr, const uint8_t * sender_proto_addr, const uint8_t * target_hw_addr, uint8_t * target_proto_addr, const uint8_t * ethernet_dst_hw_addr);
  
 void send_arp_request_broadcast(char is_ethernet, libnet_t *libnet, const uint8_t * sender_hw_addr, const uint8_t * sender_proto_addr, const uint8_t * target_hw_addr, uint8_t * target_proto_addr);
 
@@ -100,12 +100,6 @@ int main(int argc, char** argv) {
     pcap_set_snaplen(handle, 65535);
     pcap_activate(handle);
     pcap_lookupnet(argv[1], &netp, &maskp, errbuf);
-    // FIXME! EXPRESSION setflter compile
-    // pcap_compile(handle, &fp, argv[2], 0, maskp);
-    // if (pcap_setfilter(handle, &fp) < 0) {
-    //     pcap_perror(handle, "pcap_setfilter()");
-    //     exit(EXIT_FAILURE);
-    // }
 
     u_int32_t target_ip_addr, src_ip_addr;
     u_int8_t bcast_hw_addr[6] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff},
@@ -121,33 +115,20 @@ int main(int argc, char** argv) {
 
     char first_iter = 1;
     while(max_count != 0){
-
-        // if (first_iter){
-            send_arp_request_broadcast(ethernet, ln, src_hw_addr->ether_addr_octet, (u_int8_t*) &src_ip_addr, zero_hw_addr, (u_int8_t*) &target_ip_addr);
-            // first_iter = 0;
-        // } else {
-            // send_arp_request_unicast(ethernet, ln, src_hw_addr->ether_addr_octet, (u_int8_t*) &src_ip_addr, zero_hw_addr, (u_int8_t*) &target_ip_addr, (u_int8_t*) &lastreplymac);
-        // }
+        if (ethernet == 1){}
+        if (first_iter){
+            send_arp_request_unicast(ethernet, ln, (const u_int8_t *) &(src_hw_addr->ether_addr_octet), (const u_int8_t*) &src_ip_addr, (const u_int8_t *) &zero_hw_addr, (u_int8_t*) &target_ip_addr, bcast_hw_addr);
+            first_iter = 0;
+        } else {
+            send_arp_request_unicast(ethernet, ln, (const u_int8_t *) &(src_hw_addr->ether_addr_octet), (const u_int8_t*) &src_ip_addr, (const u_int8_t *) &zero_hw_addr, (u_int8_t*) &target_ip_addr, lastreplymac);
+        }
         recv_handler();
         
         if (max_count > 0){
             max_count--;
         }
      }
-
     return EXIT_SUCCESS;
-    
-    /*
-     int ret;
-                        if (0 > (ret = pcap_dispatch(pcap, -1,
-                                                     func,
-                                                     NULL))) {
-                    // rest, so we don't take 100% CPU... mostly
-                       
-                    usleep(1);
-    */
-
-
 }
 
 
@@ -160,52 +141,12 @@ void cleanup() {
     pcap_close(handle);
     free(errbuf);
     libnet_destroy(ln);
-    printf("\nSend %d.\nReceived %d.\n", numsent, numrecvd);
+    int num = 0;
+    if (numsent !=0) {
+        int num = (100*(numsent-numrecvd)/numsent);
+    } 
+    printf("\nSent: (%d).\nReceived: (%d).\nLoss: (%d).\n", numsent, numrecvd, num);
 }
-
-
-// void trap(u_char *user, const struct pcap_pkthdr *h, const u_char *bytes) {
-//   struct ether_header *eptr;
-//   eptr = (struct ether_header *) bytes;
-//   printf("[%dB of %dB]\n", h->caplen, h->len);
-//   if (ntohs (eptr->ether_type) == ETHERTYPE_IP) {
-//     packet_counters[0]++;
-
-
-//     const u_char *ip_header;
-//     const u_char *tcp_header;
-//     const u_char *payload;
-
-//     /* Header lengths in bytes */
-//     int ethernet_header_length = 14; /* Doesn't change */
-//     int ip_header_length;
-//     int tcp_header_length;
-//     int payload_length;
-
-//     /* Find start of IP header */
-//     ip_header = bytes + ethernet_header_length;
-//     /* The second-half of the first byte in ip_header
-//        contains the IP header length (IHL). */
-//     ip_header_length = ((*ip_header) & 0x0F);
-//     /* The IHL is number of 32-bit segments. Multiply
-//        by four to get a byte count for pointer arithmetic */
-//     ip_header_length = ip_header_length * 4;
-//     /* Now that we know where the IP header is, we can 
-//        inspect the IP header for a protocol number to 
-//        make sure it is TCP before going any further. 
-//        Protocol is always the 10th byte of the IP header */
-//     u_char protocol = *(ip_header + 9);
-//     if (protocol == IPPROTO_TCP) {
-//       packet_counters[2]++;
-//     } else if (protocol == IPPROTO_UDP) {
-//       packet_counters[3]++;
-//     }
-//   } else if (ntohs (eptr->ether_type) == ETHERTYPE_ARP) {
-//     packet_counters[1]++;
-//   } else {
-//     packet_counters[4]++;
-//   }
-// }
 
 
 str2int_errno str2int(int *out, char *s, int base) {
@@ -224,33 +165,34 @@ str2int_errno str2int(int *out, char *s, int base) {
     return STR2INT_SUCCESS;
 }
 
-void send_arp_request_unicast(char is_ethernet, libnet_t *libnet, const uint8_t * sender_hw_addr, const uint8_t * sender_proto_addr, const uint8_t * target_hw_addr, uint8_t * target_proto_addr, u_int8_t* ethernet_dst_hw_addr) {
+void send_arp_request_unicast(char is_ethernet, libnet_t *libnet, const uint8_t * sender_hw_addr, const uint8_t * sender_proto_addr, const uint8_t * target_hw_addr, uint8_t * target_proto_addr, const u_int8_t* ethernet_dst_hw_addr) {
 
     static libnet_ptag_t arp=0, eth=0;
 
     if (-1 == (arp = libnet_autobuild_arp(
         ARPOP_REQUEST,                     /* operation type       */
         sender_hw_addr,                    /* sender hardware addr */
-        (u_int8_t*) &sender_proto_addr,    /* sender protocol addr */
+        sender_proto_addr,                 /* sender protocol addr */
         target_hw_addr,                    /* target hardware addr */
-        (u_int8_t*) &target_proto_addr,    /* target protocol addr */
+        target_proto_addr,                 /* target protocol addr */
         libnet                             /* libnet context       */
-        ))) {                   
+        ))) 
+    {                   
         libnet_geterror(libnet);          
+        perror("Libnet fail autobuild.\n");
     };                               
-
     if (is_ethernet) {
-        // eth = libnet_build_ethernet(ethernet_dst_hw_addr,
-        //                         sender_hw_addr,
-        //                         ETHERTYPE_ARP,
-        //                         NULL, // payload
-        //                         0, // payload size
-        //                         libnet,
-        //                         0);
-        eth = libnet_autobuild_ethernet(
-                            sender_hw_addr,             
-                            ETHERTYPE_ARP,             
-                            libnet);  
+        eth = libnet_build_ethernet(ethernet_dst_hw_addr,
+                                sender_hw_addr,
+                                ETHERTYPE_ARP,
+                                NULL, // payload
+                                0, // payload size
+                                libnet,
+                                0);
+        // eth = libnet_autobuild_ethernet(
+        //                     sender_hw_addr,             
+        //                     ETHERTYPE_ARP,             
+        //                     libnet);  
         
     } else {
         int16_t vlan_prio = 1; // range of 0 - 7;
@@ -269,6 +211,7 @@ void send_arp_request_unicast(char is_ethernet, libnet_t *libnet, const uint8_t 
     }
     if (-1 == eth) {
         libnet_geterror(libnet);
+        perror("Libnet fail autobuild ether.\n");
     }
     if (-1 == libnet_write(libnet)) {
         fprintf(stderr, "arping: libnet_write(): %s\n",
@@ -277,40 +220,11 @@ void send_arp_request_unicast(char is_ethernet, libnet_t *libnet, const uint8_t 
     numsent++;
  
     printf("Send %d messages\n", numsent);
-    // libnet_autobuild_ethernet(
-    //     bcast_hw_addr,                     /* ethernet destination */
-    //     ETHERTYPE_ARP,                     /* ethertype            */
-    //     ln);                               /* libnet context       */
-
-
-    // libnet_write(ln);
-
-    // const uint8_t padding[16] = {0};
- 
-    //  if (-1 == (arp = libnet_build_arp(
-    //                    ARPHRD_ETHER,
-    //                    ETHERTYPE_IP,
-    //                    ETH_ALEN,
-    //                    IP_ALEN,
-    //                    send_reply ? ARPOP_REPLY : ARPOP_REQUEST,
-    //                    srcmac,
-    //                    (uint8_t*)&srcip,
-    //                    unsolicited ? (uint8_t*)ethxmas : (uint8_t*)ethnull,
-    //                    (uint8_t*)&dstip,
-    //                    (uint8_t*)padding,
-    //                    sizeof padding,
-    //                    libnet,
-    //                    arp))) {
-    //      fprintf(stderr, "arping: libnet_build_arp(): %s\n",
-    //          libnet_geterror(libnet));
-    //      sigint(0);
-    //  }
-
  }
 
 void send_arp_request_broadcast(char is_ethernet, libnet_t *libnet, const uint8_t * sender_hw_addr, const uint8_t * sender_proto_addr, const uint8_t * target_hw_addr, uint8_t * target_proto_addr) {
-    u_int8_t bcast_hw_addr[6] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
-    send_arp_request_unicast(is_ethernet, libnet, sender_hw_addr, sender_proto_addr, target_hw_addr, target_proto_addr, bcast_hw_addr);
+    const uint8_t bcast_hw_addr[6] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
+    send_arp_request_unicast(is_ethernet, libnet, sender_hw_addr, sender_proto_addr, target_hw_addr, target_proto_addr, (const uint8_t*) &bcast_hw_addr);
 }
 
 
@@ -357,8 +271,6 @@ void recv_arp_reply(const char *user, struct pcap_pkthdr *h, const char * const 
         return;
     }
 
-    printf("Arping: ARP reply ... from IPv4 address\n");
-
     // To Ethernet address.
     if (htons(harp->ar_hrd) != ARPHRD_ETHER) {
             return;
@@ -370,21 +282,15 @@ void recv_arp_reply(const char *user, struct pcap_pkthdr *h, const char * const 
     uint32_t ip;
     memcpy(&ip, (char*)harp + harp->ar_hln + LIBNET_ARP_H, 4);
     if (dstip != ip) {
-        printf("arping: from IPv4 address!\n");
-        printf("dst %s - src %s\n", libnet_addr2name4(dstip, 0), libnet_addr2name4(ip, 0));
+        printf("Arping from (%s)\n", libnet_addr2name4(ip, 0));
         return;
     }
-
-    printf("arping: for the right IPv4 address!\n");
 
     numrecvd++;
 
     printf("%d bytes from %s (%s): index=%d", h->len, format_mac(pkt_srcmac, buf, sizeof(buf)), libnet_addr2name4(ip, 0), numrecvd);
 
-    // fflush(stdout);
-
     memcpy(lastreplymac, pkt_srcmac, ETH_ALEN);
-
  }
 
   void recv_handler() {
@@ -396,8 +302,6 @@ void recv_arp_reply(const char *user, struct pcap_pkthdr *h, const char * const 
         exit(1);
     }
 
-    printf("Wbil 1\n");
-
     char done = 0;
 
     while (!done) {
@@ -408,19 +312,15 @@ void recv_arp_reply(const char *user, struct pcap_pkthdr *h, const char * const 
         FD_ZERO(&fds);
         FD_SET(fd, &fds);
 
-         struct timeval tv;
+        struct timeval tv;
         tv.tv_sec = 1;
-        // tv.tv_usec = ts.tv_nsec / 1000;
+        // tv.tv_usec = 5000000;
 
-        printf("Wbil 2\n");
 
         r = select(fd + 1, &fds, NULL, NULL, &tv);
 
-        printf("Wbil 3\n");
-
         if (r == 0) {
             printf("Timeout\n");
-            // fflush(stdout);
             done = 1;
         }
         else if (r == -1){
@@ -432,11 +332,8 @@ void recv_arp_reply(const char *user, struct pcap_pkthdr *h, const char * const 
             int ret;
             if (0 > (ret = pcap_dispatch(handle, -1, (pcap_handler) recv_arp_reply, NULL))) {
                 usleep(1);
-                printf("Wbil 4\n");
             }
         }
     }
-    printf("Wbil 5\n");
-
  }
 
