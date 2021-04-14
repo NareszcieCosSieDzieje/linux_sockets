@@ -20,7 +20,7 @@
 char* errbuf;
 pcap_t* handle;
 libnet_t *ln;
-u_int32_t dstip;
+uint32_t dstip;
 u_int8_t lastreplymac[ETH_ALEN];
 
 unsigned int numsent = 0;       
@@ -68,8 +68,8 @@ int main(int argc, char** argv) {
         perror("\n");
     }
     if (argc >= 3) { // INTERFACE IP
-        strcpy(interface, argv[1]);
-        strcpy(target_ip, argv[2]);
+        // strcpy(interface, argv[1]);
+        // strcpy(target_ip, argv[2]);
     }
     if (argc >= 4) { // INTERFACE IP ETHER/WIFI (0 == ethernet, > 0 == wifi)
         int ether_check = 0;
@@ -122,13 +122,12 @@ int main(int argc, char** argv) {
     char first_iter = 1;
     while(max_count != 0){
 
-        if (first_iter){
+        // if (first_iter){
             send_arp_request_broadcast(ethernet, ln, src_hw_addr->ether_addr_octet, (u_int8_t*) &src_ip_addr, zero_hw_addr, (u_int8_t*) &target_ip_addr);
-            first_iter = 0;
-        } else {
-            send_arp_request_unicast(ethernet, ln, src_hw_addr->ether_addr_octet, (u_int8_t*) &src_ip_addr, zero_hw_addr, (u_int8_t*) &target_ip_addr, (u_int8_t*) &lastreplymac);
-        }
-        usleep(10);
+            // first_iter = 0;
+        // } else {
+            // send_arp_request_unicast(ethernet, ln, src_hw_addr->ether_addr_octet, (u_int8_t*) &src_ip_addr, zero_hw_addr, (u_int8_t*) &target_ip_addr, (u_int8_t*) &lastreplymac);
+        // }
         recv_handler();
         
         if (max_count > 0){
@@ -161,8 +160,7 @@ void cleanup() {
     pcap_close(handle);
     free(errbuf);
     libnet_destroy(ln);
-    //TODO:! Print stats arp packets
-    // printf("%s: %d\n", packet_keys[i], packet_counters[i]);
+    printf("\nSend %d.\nReceived %d.\n", numsent, numrecvd);
 }
 
 
@@ -242,13 +240,17 @@ void send_arp_request_unicast(char is_ethernet, libnet_t *libnet, const uint8_t 
     };                               
 
     if (is_ethernet) {
-        eth = libnet_build_ethernet(ethernet_dst_hw_addr,
-                                sender_hw_addr,
-                                ETHERTYPE_ARP,
-                                NULL, // payload
-                                0, // payload size
-                                libnet,
-                                eth);
+        // eth = libnet_build_ethernet(ethernet_dst_hw_addr,
+        //                         sender_hw_addr,
+        //                         ETHERTYPE_ARP,
+        //                         NULL, // payload
+        //                         0, // payload size
+        //                         libnet,
+        //                         0);
+        eth = libnet_autobuild_ethernet(
+                            sender_hw_addr,             
+                            ETHERTYPE_ARP,             
+                            libnet);  
         
     } else {
         int16_t vlan_prio = 1; // range of 0 - 7;
@@ -263,7 +265,7 @@ void send_arp_request_unicast(char is_ethernet, libnet_t *libnet, const uint8_t 
                               NULL, // payload
                               0, // payload size
                               libnet,
-                              eth);
+                              0);
     }
     if (-1 == eth) {
         libnet_geterror(libnet);
@@ -347,12 +349,12 @@ void recv_arp_reply(const char *user, struct pcap_pkthdr *h, const char * const 
  
     // ARP reply.
     if (htons(harp->ar_op) != ARPOP_REPLY) {
-            return;
+        return;
     }
 
     // From IPv4 address reply.
     if (htons(harp->ar_pro) != ETHERTYPE_IP) {
-            return;
+        return;
     }
 
     printf("Arping: ARP reply ... from IPv4 address\n");
@@ -361,34 +363,6 @@ void recv_arp_reply(const char *user, struct pcap_pkthdr *h, const char * const 
     if (htons(harp->ar_hrd) != ARPHRD_ETHER) {
             return;
     }
-        // printf("arping: ... to Ethernet address\n");
-
-
-    // // Special case: If we're not in promisc mode we could still
-    // // get packets where DST mac is not us, if they're *sent* from
-    // // the local host. This is an edge case but in general falls under "is promisc?".
-    // //
-    // // It may cause confusion because `-p` now means not just
-    // // enable promisc mode (disable filter on card / in kernel),
-    // // but also allow packets to any destination (disable filter
-    // // in `arping`).
-    // {
-    //         const uint8_t* p = (u_char*)harp
-    //                 + sizeof(struct libnet_arp_hdr)
-    //                 + ETH_ALEN
-    //                 + IP_ALEN;
-    //         char buf[128];
-    //         if (!promisc && memcmp(p, srcmac, ETH_ALEN)) {
-    //                 format_mac(p, buf, sizeof buf);
-    //                 if (verbose > 3) {
-    //                         printf("arping: ... but sent from %s\n", buf);
-    //                 }
-    //                 return;
-    //         }
-    // }
-    // if (verbose > 3) {
-    //         printf("arping: ... destination is the source we used\n");
-    // }
 
     char buf[128];
 
@@ -397,6 +371,7 @@ void recv_arp_reply(const char *user, struct pcap_pkthdr *h, const char * const 
     memcpy(&ip, (char*)harp + harp->ar_hln + LIBNET_ARP_H, 4);
     if (dstip != ip) {
         printf("arping: from IPv4 address!\n");
+        printf("dst %s - src %s\n", libnet_addr2name4(dstip, 0), libnet_addr2name4(ip, 0));
         return;
     }
 
@@ -421,6 +396,8 @@ void recv_arp_reply(const char *user, struct pcap_pkthdr *h, const char * const 
         exit(1);
     }
 
+    printf("Wbil 1\n");
+
     char done = 0;
 
     while (!done) {
@@ -432,10 +409,14 @@ void recv_arp_reply(const char *user, struct pcap_pkthdr *h, const char * const 
         FD_SET(fd, &fds);
 
          struct timeval tv;
-        tv.tv_sec = 2;
+        tv.tv_sec = 1;
         // tv.tv_usec = ts.tv_nsec / 1000;
 
+        printf("Wbil 2\n");
+
         r = select(fd + 1, &fds, NULL, NULL, &tv);
+
+        printf("Wbil 3\n");
 
         if (r == 0) {
             printf("Timeout\n");
@@ -451,8 +432,11 @@ void recv_arp_reply(const char *user, struct pcap_pkthdr *h, const char * const 
             int ret;
             if (0 > (ret = pcap_dispatch(handle, -1, (pcap_handler) recv_arp_reply, NULL))) {
                 usleep(1);
+                printf("Wbil 4\n");
             }
         }
     }
+    printf("Wbil 5\n");
+
  }
 
